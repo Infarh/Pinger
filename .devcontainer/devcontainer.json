@@ -1,0 +1,24 @@
+{
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python", 
+                "ms-toolsai.jupyter", 
+                "mechatroner.rainbow-csv", 
+                "ms-dotnettools.csdevkit", 
+                "mhutchie.git-graph",
+                "ms-dotnettools.vscodeintellicode-csharp",
+                "github.copilot"
+            ],
+            "settings": {
+                "terminal.integrated.shellIntegration.enabled": true,
+                "workbench.sideBar.location": "right",
+                "git.enableSmartCommit": true,
+                "git.confirmSync": false,
+                "git.autofetch": true,
+                "keyboard.layout": "00000419"
+            }
+        }
+    },
+    "postCreateCommand": "sudo DEBIAN_FRONTEND=noninteractive apt update && sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y"
+}
