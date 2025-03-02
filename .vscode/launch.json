@@ -1,24 +1,15 @@
 {
-    // Используйте IntelliSense, чтобы узнать о возможных атрибутах.
-    // Наведите указатель мыши, чтобы просмотреть описания существующих атрибутов.
-    // Для получения дополнительной информации посетите: https://go.microsoft.com/fwlink/?linkid=830387
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "name": ".NET Core Launch (console)",
-            "type": "coreclr",
-            "request": "launch",
-            "preLaunchTask": "build",
-            "program": "${workspaceFolder}/Pinger/bin/Debug/net9.0/Pinger.dll",
-            "args": [],
-            "cwd": "${workspaceFolder}/Pinger",
-            "console": "internalConsole",
-            "stopAtEntry": false
-        },
-        {
-            "name": ".NET Core Attach",
-            "type": "coreclr",
-            "request": "attach"
-        }
-    ]
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "coreclr",
+      "request": "launch",
+      "name": "Launch Pinger",
+      "program": "${workspaceFolder}/Pinger/bin/Debug/net8.0/Pinger.dll",
+      "args": [ "ya.ru" ],
+      "cwd": "${workspaceFolder}/Pinger",
+      "stopAtEntry": false,
+      "preLaunchTask": "build"
+    }
+  ]
 }
