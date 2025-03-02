@@ -20,5 +20,10 @@
             }
         }
     },
-    "postCreateCommand": "sudo DEBIAN_FRONTEND=noninteractive apt update && sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y"
+    "postCreateCommand": "sudo DEBIAN_FRONTEND=noninteractive apt update && sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y && sudo apt install dotnet-sdk-9.0 -y && dotnet dev-certs https --trust",
+    "containerEnv": {
+        "DOTNET_SKIP_FIRST_TIME_EXPERIENCE": "true", // Переменная окружения для пропуска первого запуска .NET
+        "DOTNET_NOLOGO": "true", // Переменная окружения для отключения логотипа .NET
+        "DOTNET_CLI_TELEMETRY_OPTOUT": "true" // Переменная окружения для отключения телеметрии .NET
+    }
 }
