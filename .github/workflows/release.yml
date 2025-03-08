@@ -37,6 +37,7 @@ jobs:
 
     - name: Get version
       id: get_version
+      continue-on-error: true
       shell: pwsh
       run: |
         $full_version = & ./Pinger/bin/Release/publish/win-x64/Pinger.exe -v
