@@ -2,7 +2,7 @@
   "profiles": {
     "Pinger": {
       "commandName": "Project",
-      "commandLineArgs": "ya.ru"
+      "commandLineArgs": "-p 500 -t 2000 -l 64 -ttl 100 -c 100 --avgt 20 --avgl 500 -e ya.ru"
     }
   }
 }
