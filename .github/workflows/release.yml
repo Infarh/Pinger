@@ -12,6 +12,9 @@ on:
         required: true
         default: 'dev'
 
+permissions:
+  contents: write  # Добавление разрешений для записи содержимого
+
 jobs:
   build:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
@@ -34,16 +37,12 @@ jobs:
 
     - name: Get version
       id: get_version
-      continue-on-error: true
       shell: pwsh
       run: |
-        # Извлечение текущей версии приложения
         $full_version = & ./Pinger/bin/Release/publish/win-x64/Pinger.exe -v
         Write-Output "Full version: $full_version"
-        # Выделение части версии
         $version = $full_version.Substring(9).Trim()
         Write-Output "Extracted version: $version"
-        # Сохранение выделенной части версии в переменные окружения и выходные данные
         echo "VERSION=$version" >> $GITHUB_ENV
 
     - name: Create Release
@@ -63,6 +62,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./Pinger/bin/Release/net9.0/publish/win-x64/Pinger.exe
+        asset_path: ./Pinger/bin/Release/publish/win-x64/Pinger.exe
         asset_name: Pinger.exe
         asset_content_type: application/octet-stream
