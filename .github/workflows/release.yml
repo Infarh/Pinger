@@ -34,6 +34,7 @@ jobs:
 
     - name: Get version
       id: get_version
+      continue-on-error: true
       shell: pwsh
       run: |
         # Извлечение текущей версии приложения
