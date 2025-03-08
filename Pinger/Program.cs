@@ -44,6 +44,7 @@ var last_time = 0L;
 var avg_time = 0d;
 var last_ip = IPAddress.None;
 var lost_count = 0;
+var last_cursor_pos = 0;
 
 var ip_str = "";
 var host_str = "";
@@ -85,6 +86,7 @@ try
                     last_ttl = reply.Options!.Ttl;
                     last_time = reply.RoundtripTime;
                     n++;
+
                     if (n == 1)
                         avg_time = last_time;
                     else
@@ -100,6 +102,12 @@ try
             var lost_p = (double)lost_count / i * 100;
             
             Console.Write($"[{i,6}]{host_str} t:{last_time,3}(avg:{avg_time,6:f1})ms ttl:{last_ttl} lost:{lost_count}({lost_p,5:f1}%)");
+            var cursor_pos = Console.CursorLeft;
+            if(last_cursor_pos > cursor_pos)
+                for(var d = last_cursor_pos - cursor_pos; d >= 0; d--)
+                    Console.Write(' ');
+
+            last_cursor_pos = cursor_pos;
 
             Console.Title = $"{host}[{i,4}] t:{avg_time,5:0.0ms} lost:{lost_p,5:f1}%";
 
