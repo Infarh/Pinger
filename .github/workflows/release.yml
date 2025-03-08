@@ -43,7 +43,12 @@ jobs:
       run: |
         try {
           # Извлечение текущей версии приложения
-          $full_version = & ./Pinger/bin/Release/net9.0/publish/win-x64/Pinger.exe -v
+          $process = Start-Process -FilePath ./Pinger/bin/Release/publish/win-x64/Pinger.exe -ArgumentList '-v' -NoNewWindow -PassThru -Wait
+          $exit_code = $process.ExitCode
+          if ($exit_code -ne -2) {
+            throw "Unexpected exit code: $exit_code"
+          }
+          $full_version = $process.StandardOutput.ReadToEnd().Trim()
           Write-Output "Full version: $full_version"
           # Выделение части версии
           $version = $full_version.Substring(9).Trim()
@@ -54,6 +59,7 @@ jobs:
           Write-Error "An error occurred: $_"
           exit 1
         }
+
 
     - name: Create Release
       id: create_release
