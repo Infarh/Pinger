@@ -37,10 +37,10 @@ jobs:
 
     - name: Get version
       id: get_version
-      continue-on-error: true
+      continue-on-error: false
       run: |
-        version=$(./Pinger/bin/Release/publish/win-x64/Pinger.exe -vv)
-        echo "VERSION=$version" >> $GITHUB_ENV
+        $version = ./Pinger/bin/Release/publish/win-x64/Pinger.exe -vv
+        echo "VERSION=$version" >> $env:GITHUB_ENV
 
     - name: Create Release
       id: create_release
