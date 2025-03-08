@@ -37,7 +37,9 @@ jobs:
 
     - name: Get version
       id: get_version
-      run: echo "##[set-output name=VERSION;]$(./Pinger/bin/Release/net9.0/publish/win-x64/Pinger.exe -v | grep -oP '(?<=Version: ).*')"
+      run: |  
+        VERSION=$(./Pinger/bin/Release/net9.0/publish/win-x64/Pinger.exe -v | grep -oP '(?<=Version: ).*')  
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
 
     - name: Create Release
       id: create_release
