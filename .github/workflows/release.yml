@@ -39,10 +39,20 @@ jobs:
 
     - name: Get version
       id: get_version
-      run: |  
-        VERSION=$(./Pinger/bin/Release/net9.0/publish/win-x64/Pinger.exe -v | grep -oP '(?<=Version: ).*')
-        echo "VERSION=$VERSION" >> $GITHUB_ENV
-        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+      shell: bash
+      run: |
+        # Извлечение текущей версии приложения
+        full_version=$(./Pinger/bin/Release/net9.0/publish/win-x64/Pinger.exe -v)
+        # Печать полной версии для контроля и отладки
+        echo "Full version: $full_version"
+        # Выделение части версии с помощью grep
+        version=$(echo $full_version | grep -oP '(?<=Version: ).*')
+        # Печать выделенной части версии для контроля и отладки
+        echo "Extracted version: $version"
+        # Сохранение выделенной части версии в переменные окружения и выходные данные
+        echo "VERSION=$version" >> $GITHUB_ENV
+        echo "VERSION=$version" >> $GITHUB_OUTPUT
+
     - name: Create Release
       id: create_release
       uses: actions/create-release@v1
