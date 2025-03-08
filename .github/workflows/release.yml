@@ -35,7 +35,7 @@ jobs:
       run: dotnet build -c Release
 
     - name: Publish
-      run: dotnet publish Pinger -v d /p:PublishProfile=./Pinger/Properties/PublishProfiles/FolderProfile.pubxml
+      run: dotnet publish Pinger /p:PublishProfile=./Pinger/Properties/PublishProfiles/FolderProfile.pubxml
 
     - name: Get version
       id: get_version
