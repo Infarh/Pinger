@@ -21,8 +21,15 @@ var buffer = new byte[length];
 var options = new PingOptions { Ttl = 54 };
 
 string? host = "ya.ru";
-if (await ProcessArgsAsync(args) is var process_args_return_code && process_args_return_code != 0)
-    return process_args_return_code;
+
+switch (await ProcessArgsAsync(args))
+{
+    case null:
+        return 0;
+
+    case { } return_code when return_code != 0:
+        return return_code;
+}
 
 if (host is null)
 {
@@ -131,7 +138,7 @@ Console.WriteLine($"Ping {host} complete.");
 
 return cancel.IsCancellationRequested ? -1 : 0;
 
-async Task<int> ProcessArgsAsync(string[] args)
+async Task<int?> ProcessArgsAsync(string[] args)
 {
     if (args.Length == 0) return 0;
 
@@ -158,12 +165,16 @@ async Task<int> ProcessArgsAsync(string[] args)
                 Console.WriteLine("  /v or /version - show program version");
                 return 0;
 
+            case "vv":
+                Console.WriteLine(typeof(Program).Assembly.GetCustomAttribute<AssemblyFileVersionAttribute>()?.Version);
+                return null;
+
             case "v":
             case "version":
                 // Вывод версии программы, определенной при сборке
                 var version = typeof(Program).Assembly.GetCustomAttribute<AssemblyFileVersionAttribute>();
                 Console.WriteLine($"Version: {version?.Version}");
-                return 0;
+                return null;
 
             case "ttl":
                 if (i + 1 < args.Length && int.TryParse(args[i + 1], out var ttl))

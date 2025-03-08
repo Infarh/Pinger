@@ -38,12 +38,8 @@ jobs:
     - name: Get version
       id: get_version
       continue-on-error: true
-      shell: pwsh
       run: |
-        $full_version = & ./Pinger/bin/Release/publish/win-x64/Pinger.exe -v
-        Write-Output "Full version: $full_version"
-        $version = $full_version.Substring(9).Trim()
-        Write-Output "Extracted version: $version"
+        version=$(./Pinger/bin/Release/publish/win-x64/Pinger.exe -vv)
         echo "VERSION=$version" >> $GITHUB_ENV
 
     - name: Create Release
