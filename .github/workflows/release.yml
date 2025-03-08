@@ -52,8 +52,8 @@ jobs:
         # Печать выделенной части версии для контроля и отладки
         Write-Output "Extracted version: $version"
         # Сохранение выделенной части версии в переменные окружения и выходные данные
-        echo "VERSION=$version" >> $env:GITHUB_ENV
-        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+        Add-Content -Path $env:GITHUB_ENV -Value "VERSION=$version"
+        Add-Content -Path $env:GITHUB_OUTPUT -Value "VERSION=$version"
 
 
     - name: Create Release
