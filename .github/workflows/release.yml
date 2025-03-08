@@ -1,9 +1,9 @@
 name: Create Release
 
 on:
-  push:
+  pull_request:
     branches:
-      - main
+      - master
   workflow_dispatch:
 
 jobs:
@@ -13,6 +13,8 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v2
+      with:
+        ref: master
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v1
