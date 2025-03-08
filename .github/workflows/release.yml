@@ -41,15 +41,19 @@ jobs:
       id: get_version
       shell: pwsh
       run: |
-        # Извлечение текущей версии приложения
-        $full_version = & ./Pinger/bin/Release/net9.0/publish/win-x64/Pinger.exe -v
-        Write-Output "Full version: $full_version"
-        # Выделение части версии
-        $version = $full_version.Substring(9).Trim()
-        Write-Output "Extracted version: $version"
-        # Сохранение выделенной части версии в переменные окружения и выходные данные
-        echo "VERSION=$version" >> $GITHUB_ENV
-        echo "env version value: ${{ env.VERSION }}"
+        try {
+          # Извлечение текущей версии приложения
+          $full_version = & ./Pinger/bin/Release/net9.0/publish/win-x64/Pinger.exe -v
+          Write-Output "Full version: $full_version"
+          # Выделение части версии
+          $version = $full_version.Substring(9).Trim()
+          Write-Output "Extracted version: $version"
+          # Сохранение выделенной части версии в переменные окружения и выходные данные
+          echo "VERSION=$version" >> $GITHUB_ENV
+        } catch {
+          Write-Error "An error occurred: $_"
+          exit 1
+        }
 
     - name: Create Release
       id: create_release
