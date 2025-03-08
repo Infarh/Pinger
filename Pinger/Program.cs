@@ -1,6 +1,7 @@
 ﻿using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Reflection;
 
 //if (args.Length == 0)
 //{
@@ -20,7 +21,8 @@ var buffer = new byte[length];
 var options = new PingOptions { Ttl = 54 };
 
 string? host = "ya.ru";
-await ProcessArgsAsync(args);
+if (!await ProcessArgsAsync(args))
+    return -2;
 
 if (host is null)
 {
@@ -119,11 +121,11 @@ catch(TaskCanceledException)
 Console.WriteLine();
 Console.WriteLine($"Ping {host} complete.");
 
-return 0;
+return cancel.IsCancellationRequested ? -1 : 0;
 
-async Task ProcessArgsAsync(string[] args)
+async Task<bool> ProcessArgsAsync(string[] args)
 {
-    if (args.Length == 0) return;
+    if (args.Length == 0) return true;
 
     for (var i = 0; i < args.Length; i++)
     {
@@ -145,7 +147,15 @@ async Task ProcessArgsAsync(string[] args)
                 Console.WriteLine("  /e or /ignoreerror - ignore ping errors");
                 Console.WriteLine("  /h or /host <host> - set host");
                 Console.WriteLine("  /cls or /cln or /clean or /clear - clear console before start");
-                return;
+                Console.WriteLine("  /v or /version - show program version");
+                return false;
+
+            case "v":
+            case "version":
+                // Вывод версии программы, определенной при сборке
+                var version = typeof(Program).Assembly.GetCustomAttribute<AssemblyFileVersionAttribute>();
+                Console.WriteLine($"Version: {version?.Version}");
+                return false;
 
             case "ttl":
                 if (i + 1 < args.Length && int.TryParse(args[i + 1], out var ttl))
@@ -228,7 +238,7 @@ async Task ProcessArgsAsync(string[] args)
                 else
                     try
                     {
-                        if(await Dns.GetHostAddressesAsync(parameter) is { Length: > 0 })
+                        if (await Dns.GetHostAddressesAsync(parameter) is { Length: > 0 })
                             host = parameter;
                         else
                         {
@@ -243,6 +253,8 @@ async Task ProcessArgsAsync(string[] args)
                 break;
         }
     }
+
+    return true;
 }
 
 internal readonly struct OutputColor : IDisposable
