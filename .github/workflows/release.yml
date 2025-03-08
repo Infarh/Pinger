@@ -46,12 +46,15 @@ jobs:
         # Печать полной версии для контроля и отладки
         Write-Output "Full version: $full_version"
         # Выделение части версии с помощью регулярного выражения
-        $version = $full_version -match 'Version: (.*)' | Out-Null; $matches[1]
+        if ($full_version -match 'Version: (.*)') {
+          $version = $matches[1]
+        }
         # Печать выделенной части версии для контроля и отладки
         Write-Output "Extracted version: $version"
         # Сохранение выделенной части версии в переменные окружения и выходные данные
         echo "VERSION=$version" >> $env:GITHUB_ENV
         echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+
 
     - name: Create Release
       id: create_release
