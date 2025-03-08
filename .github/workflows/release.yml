@@ -39,19 +39,19 @@ jobs:
 
     - name: Get version
       id: get_version
-      shell: bash
+      shell: pwsh
       run: |
         # Извлечение текущей версии приложения
-        full_version=$(./Pinger/bin/Release/net9.0/publish/win-x64/Pinger.exe -v)
+        $full_version = & ./Pinger/bin/Release/net9.0/publish/win-x64/Pinger.exe -v
         # Печать полной версии для контроля и отладки
-        echo "Full version: $full_version"
-        # Выделение части версии с помощью grep
-        version=$(echo $full_version | grep -oP '(?<=Version: ).*')
+        Write-Output "Full version: $full_version"
+        # Выделение части версии с помощью регулярного выражения
+        $version = $full_version -match 'Version: (.*)' | Out-Null; $matches[1]
         # Печать выделенной части версии для контроля и отладки
-        echo "Extracted version: $version"
+        Write-Output "Extracted version: $version"
         # Сохранение выделенной части версии в переменные окружения и выходные данные
-        echo "VERSION=$version" >> $GITHUB_ENV
-        echo "VERSION=$version" >> $GITHUB_OUTPUT
+        echo "VERSION=$version" >> $env:GITHUB_ENV
+        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
 
     - name: Create Release
       id: create_release
