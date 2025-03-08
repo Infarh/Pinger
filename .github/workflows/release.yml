@@ -1,0 +1,61 @@
+name: Create Release
+
+on:
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to release from'
+        required: true
+        default: 'master'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+      with:
+        ref: ${{ github.event.inputs.branch || 'master' }}
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '9.0.x'
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build
+      run: dotnet build -c Release
+
+    - name: Publish
+      run: dotnet publish Pinger -v d /p:PublishProfile=./Pinger/Properties/PublishProfiles/FolderProfile.pubxml
+
+    - name: Get version
+      id: get_version
+      run: echo "##[set-output name=VERSION;]$(./Pinger/bin/Release/net9.0/publish/win-x64/Pinger.exe -v | grep -oP '(?<=Version: ).*')"
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ steps.get_version.outputs.VERSION }}
+        release_name: Release ${{ steps.get_version.outputs.VERSION }}
+        draft: ${{ github.event.inputs.branch != 'master' }}
+        prerelease: false
+
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./Pinger/bin/Release/net9.0/publish/win-x64/Pinger.exe
+        asset_name: Pinger.exe
+        asset_content_type: application/octet-stream
