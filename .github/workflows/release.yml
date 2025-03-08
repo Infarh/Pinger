@@ -47,7 +47,7 @@ jobs:
       with:
         tag_name: v${{ steps.get_version.outputs.VERSION }}
         release_name: Release ${{ steps.get_version.outputs.VERSION }}
-        draft: false
+        draft: ${{ github.event.inputs.branch != 'master' }}
         prerelease: false
 
     - name: Upload Release Asset
