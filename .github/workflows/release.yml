@@ -22,17 +22,12 @@ jobs:
       uses: actions/checkout@v2
       with:
         ref: ${{ github.event.inputs.branch || 'master' }}
+        fetch-depth: 1
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v1
       with:
         dotnet-version: '9.0.x'
-
-    - name: Restore dependencies
-      run: dotnet restore
-
-    - name: Build
-      run: dotnet build -c Release
 
     - name: Publish
       run: dotnet publish Pinger /p:PublishProfile=./Pinger/Properties/PublishProfiles/FolderProfile.pubxml
@@ -41,25 +36,14 @@ jobs:
       id: get_version
       shell: pwsh
       run: |
-        try {
-          # Извлечение текущей версии приложения
-          $process = Start-Process -FilePath ./Pinger/bin/Release/publish/win-x64/Pinger.exe -ArgumentList '-v' -NoNewWindow -PassThru -Wait
-          $exit_code = $process.ExitCode
-          if ($exit_code -ne -2) {
-            throw "Unexpected exit code: $exit_code"
-          }
-          $full_version = $process.StandardOutput.ReadToEnd().Trim()
-          Write-Output "Full version: $full_version"
-          # Выделение части версии
-          $version = $full_version.Substring(9).Trim()
-          Write-Output "Extracted version: $version"
-          # Сохранение выделенной части версии в переменные окружения и выходные данные
-          echo "VERSION=$version" >> $GITHUB_ENV
-        } catch {
-          Write-Error "An error occurred: $_"
-          exit 1
-        }
-
+        # Извлечение текущей версии приложения
+        $full_version = & ./Pinger/bin/Release/net9.0/publish/win-x64/Pinger.exe -v
+        Write-Output "Full version: $full_version"
+        # Выделение части версии
+        $version = $full_version.Substring(9).Trim()
+        Write-Output "Extracted version: $version"
+        # Сохранение выделенной части версии в переменные окружения и выходные данные
+        echo "VERSION=$version" >> $GITHUB_ENV
 
     - name: Create Release
       id: create_release

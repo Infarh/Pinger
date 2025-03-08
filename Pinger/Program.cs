@@ -21,8 +21,8 @@ var buffer = new byte[length];
 var options = new PingOptions { Ttl = 54 };
 
 string? host = "ya.ru";
-if (!await ProcessArgsAsync(args))
-    return -2;
+if (await ProcessArgsAsync(args) is var process_args_return_code && process_args_return_code != 0)
+    return process_args_return_code;
 
 if (host is null)
 {
@@ -131,9 +131,9 @@ Console.WriteLine($"Ping {host} complete.");
 
 return cancel.IsCancellationRequested ? -1 : 0;
 
-async Task<bool> ProcessArgsAsync(string[] args)
+async Task<int> ProcessArgsAsync(string[] args)
 {
-    if (args.Length == 0) return true;
+    if (args.Length == 0) return 0;
 
     for (var i = 0; i < args.Length; i++)
     {
@@ -156,14 +156,14 @@ async Task<bool> ProcessArgsAsync(string[] args)
                 Console.WriteLine("  /h or /host <host> - set host");
                 Console.WriteLine("  /cls or /cln or /clean or /clear - clear console before start");
                 Console.WriteLine("  /v or /version - show program version");
-                return false;
+                return 0;
 
             case "v":
             case "version":
                 // Вывод версии программы, определенной при сборке
                 var version = typeof(Program).Assembly.GetCustomAttribute<AssemblyFileVersionAttribute>();
                 Console.WriteLine($"Version: {version?.Version}");
-                return false;
+                return 0;
 
             case "ttl":
                 if (i + 1 < args.Length && int.TryParse(args[i + 1], out var ttl))
@@ -262,7 +262,7 @@ async Task<bool> ProcessArgsAsync(string[] args)
         }
     }
 
-    return true;
+    return 0;
 }
 
 internal readonly struct OutputColor : IDisposable
