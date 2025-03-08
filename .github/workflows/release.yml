@@ -43,16 +43,12 @@ jobs:
       run: |
         # Извлечение текущей версии приложения
         $full_version = & ./Pinger/bin/Release/net9.0/publish/win-x64/Pinger.exe -v
-        # Печать полной версии для контроля и отладки
         Write-Output "Full version: $full_version"
-        # Выделение части версии с помощью регулярного выражения
-        if ($full_version -match 'Version: (.*)') {
-          $version = $matches[1]
-        }
-        # Печать выделенной части версии для контроля и отладки
+        # Выделение части версии
+        $version = $full_version.Substring(9).Trim()
         Write-Output "Extracted version: $version"
         # Сохранение выделенной части версии в переменные окружения и выходные данные
-        echo "::set-output name=VERSION::$version"
+        echo "VERSION=$version" >> $GITHUB_ENV
 
     - name: Create Release
       id: create_release
@@ -60,8 +56,8 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: v${{ steps.get_version.outputs.VERSION }}
-        release_name: Release ${{ steps.get_version.outputs.VERSION }}
+        tag_name: v${{ env.VERSION }}
+        release_name: Release ${{ env.VERSION }}
         draft: ${{ github.event.inputs.branch != 'master' }}
         prerelease: false
 
