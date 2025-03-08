@@ -37,7 +37,7 @@ jobs:
       shell: pwsh
       run: |
         # Извлечение текущей версии приложения
-        $full_version = & ./Pinger/bin/Release/net9.0/publish/win-x64/Pinger.exe -v
+        $full_version = & ./Pinger/bin/Release/publish/win-x64/Pinger.exe -v
         Write-Output "Full version: $full_version"
         # Выделение части версии
         $version = $full_version.Substring(9).Trim()
