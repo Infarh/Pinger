@@ -49,7 +49,7 @@ jobs:
         Write-Output "Extracted version: $version"
         # Сохранение выделенной части версии в переменные окружения и выходные данные
         echo "VERSION=$version" >> $GITHUB_ENV
-        echo env version value: ${{ env.VERSION }}
+        echo "env version value: ${{ env.VERSION }}"
 
     - name: Create Release
       id: create_release
