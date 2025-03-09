@@ -5,7 +5,7 @@ using System.Net.Sockets;
 var cancellation = new CancellationTokenSource();
 var cancel = cancellation.Token;
 
-var update_task = Update.CheckUpdateAsync(cancel);
+//var update_task = Update.CheckUpdateAsync(cancel);
 
 //if (args.Length == 0)
 //{
@@ -139,14 +139,14 @@ catch(TaskCanceledException)
 Console.WriteLine();
 Console.WriteLine($"Ping {host} complete.");
 
-try
-{
-    await update_task;
-}
-catch (OperationCanceledException)
-{
-    // ignored
-}
+//try
+//{
+//    await update_task;
+//}
+//catch (OperationCanceledException)
+//{
+//    // ignored
+//}
 
 return cancel.IsCancellationRequested ? -1 : 0;
 
@@ -175,17 +175,17 @@ async Task<int?> ProcessArgsAsync(string[] args)
                 Console.WriteLine("  /h or /host <host> - set host");
                 Console.WriteLine("  /cls or /cln or /clean or /clear - clear console before start");
                 Console.WriteLine("  /v or /version - show program version");
-                return 0;
+                return null;
 
             case "vv":
                 Console.WriteLine(Update.CurrentVersion);
-                return 0;
+                return null;
 
             case "v":
             case "version":
                 // Вывод версии программы, определенной при сборке
                 Console.WriteLine($"Version: {Update.CurrentVersion}");
-                return 0;
+                return null;
 
             case "ttl":
                 if (j + 1 < args.Length && int.TryParse(args[j + 1], out var ttl))
