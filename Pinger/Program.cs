@@ -1,7 +1,11 @@
 ﻿using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
-using System.Reflection;
+
+var cancellation = new CancellationTokenSource();
+var cancel = cancellation.Token;
+
+var update_task = Update.CheckUpdateAsync(cancel);
 
 //if (args.Length == 0)
 //{
@@ -56,8 +60,7 @@ var last_cursor_pos = 0;
 var ip_str = "";
 var host_str = "";
 
-var cancellation = new CancellationTokenSource();
-var cancel = cancellation.Token;
+
 
 Console.CancelKeyPress += (_, e) =>
 {
@@ -135,6 +138,15 @@ catch(TaskCanceledException)
 
 Console.WriteLine();
 Console.WriteLine($"Ping {host} complete.");
+
+try
+{
+    await update_task;
+}
+catch (OperationCanceledException)
+{
+    // ignored
+}
 
 return cancel.IsCancellationRequested ? -1 : 0;
 
