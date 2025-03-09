@@ -35,6 +35,8 @@ if (host is null)
     }
 }
 
+var v = Update.CurrentVersion;
+
 var ping = new Ping();
 
 var i = 0;
@@ -127,9 +129,9 @@ async Task<bool> ProcessArgsAsync(string[] args)
 {
     if (args.Length == 0) return true;
 
-    for (var i = 0; i < args.Length; i++)
+    for (var j = 0; j < args.Length; j++)
     {
-        var parameter = args[i].TrimStart('/', '-').Trim(' ').ToLower();
+        var parameter = args[j].TrimStart('/', '-').Trim(' ').ToLower();
 
         switch (parameter)
         {
@@ -153,60 +155,59 @@ async Task<bool> ProcessArgsAsync(string[] args)
             case "v":
             case "version":
                 // Вывод версии программы, определенной при сборке
-                var version = typeof(Program).Assembly.GetCustomAttribute<AssemblyFileVersionAttribute>();
-                Console.WriteLine($"Version: {version?.Version}");
+                Console.WriteLine($"Version: {Update.CurrentVersion}");
                 return false;
 
             case "ttl":
-                if (i + 1 < args.Length && int.TryParse(args[i + 1], out var ttl))
+                if (j + 1 < args.Length && int.TryParse(args[j + 1], out var ttl))
                 {
                     options.Ttl = ttl;
-                    i++;
+                    j++;
                 }
                 break;
 
             case "p":
             case "pause":
-                if (i + 1 < args.Length && int.TryParse(args[i + 1], out var p))
+                if (j + 1 < args.Length && int.TryParse(args[j + 1], out var p))
                 {
                     pause = p;
-                    i++;
+                    j++;
                 }
                 break;
 
             case "t":
             case "timeout":
-                if (i + 1 < args.Length && int.TryParse(args[i + 1], out var t))
+                if (j + 1 < args.Length && int.TryParse(args[j + 1], out var t))
                 {
                     timeout = t;
-                    i++;
+                    j++;
                 }
                 break;
 
             case "l":
             case "length":
-                if (i + 1 < args.Length && int.TryParse(args[i + 1], out var l))
+                if (j + 1 < args.Length && int.TryParse(args[j + 1], out var l))
                 {
                     length = l;
-                    i++;
+                    j++;
                 }
                 break;
 
             case "c":
             case "count":
-                if (i + 1 < args.Length && long.TryParse(args[i + 1], out var c))
+                if (j + 1 < args.Length && long.TryParse(args[j + 1], out var c))
                 {
                     count = c;
-                    i++;
+                    j++;
                 }
                 break;
 
             case "avgt":
             case "averaget":
-                if (i + 1 < args.Length && int.TryParse(args[i + 1], out var at))
+                if (j + 1 < args.Length && int.TryParse(args[j + 1], out var at))
                 {
                     avg_w_t = at;
-                    i++;
+                    j++;
                 }
                 break;
 
@@ -217,10 +218,10 @@ async Task<bool> ProcessArgsAsync(string[] args)
 
             case "h":
             case "host":
-                if (i + 1 < args.Length)
+                if (j + 1 < args.Length)
                 {
-                    host = args[i + 1];
-                    i++;
+                    host = args[j + 1];
+                    j++;
                 }
                 break;
 
@@ -242,7 +243,7 @@ async Task<bool> ProcessArgsAsync(string[] args)
                             host = parameter;
                         else
                         {
-                            Console.WriteLine($"unknown parameter {parameter} ({args[i]})");
+                            Console.WriteLine($"unknown parameter {parameter} ({args[j]})");
                         }
                     }
                     catch (SocketException)

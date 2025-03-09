@@ -18,4 +18,8 @@
     <EventSourceSupport>false</EventSourceSupport>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Using Include="Pinger" />
+  </ItemGroup>
+
 </Project>
