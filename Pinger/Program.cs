@@ -21,8 +21,15 @@ var buffer = new byte[length];
 var options = new PingOptions { Ttl = 54 };
 
 string? host = "ya.ru";
-if (!await ProcessArgsAsync(args))
-    return -2;
+
+switch (await ProcessArgsAsync(args))
+{
+    case null:
+        return 0;
+
+    case { } return_code when return_code != 0:
+        return return_code;
+}
 
 if (host is null)
 {
@@ -35,8 +42,6 @@ if (host is null)
     }
 }
 
-var v = Update.CurrentVersion;
-
 var ping = new Ping();
 
 var i = 0;
@@ -46,6 +51,7 @@ var last_time = 0L;
 var avg_time = 0d;
 var last_ip = IPAddress.None;
 var lost_count = 0;
+var last_cursor_pos = 0;
 
 var ip_str = "";
 var host_str = "";
@@ -87,6 +93,7 @@ try
                     last_ttl = reply.Options!.Ttl;
                     last_time = reply.RoundtripTime;
                     n++;
+
                     if (n == 1)
                         avg_time = last_time;
                     else
@@ -102,6 +109,12 @@ try
             var lost_p = (double)lost_count / i * 100;
             
             Console.Write($"[{i,6}]{host_str} t:{last_time,3}(avg:{avg_time,6:f1})ms ttl:{last_ttl} lost:{lost_count}({lost_p,5:f1}%)");
+            var cursor_pos = Console.CursorLeft;
+            if(last_cursor_pos > cursor_pos)
+                for(var d = last_cursor_pos - cursor_pos; d >= 0; d--)
+                    Console.Write(' ');
+
+            last_cursor_pos = cursor_pos;
 
             Console.Title = $"{host}[{i,4}] t:{avg_time,5:0.0ms} lost:{lost_p,5:f1}%";
 
@@ -125,9 +138,9 @@ Console.WriteLine($"Ping {host} complete.");
 
 return cancel.IsCancellationRequested ? -1 : 0;
 
-async Task<bool> ProcessArgsAsync(string[] args)
+async Task<int?> ProcessArgsAsync(string[] args)
 {
-    if (args.Length == 0) return true;
+    if (args.Length == 0) return 0;
 
     for (var j = 0; j < args.Length; j++)
     {
@@ -150,13 +163,17 @@ async Task<bool> ProcessArgsAsync(string[] args)
                 Console.WriteLine("  /h or /host <host> - set host");
                 Console.WriteLine("  /cls or /cln or /clean or /clear - clear console before start");
                 Console.WriteLine("  /v or /version - show program version");
-                return false;
+                return 0;
+
+            case "vv":
+                Console.WriteLine(Update.CurrentVersion);
+                return 0;
 
             case "v":
             case "version":
                 // Вывод версии программы, определенной при сборке
                 Console.WriteLine($"Version: {Update.CurrentVersion}");
-                return false;
+                return 0;
 
             case "ttl":
                 if (j + 1 < args.Length && int.TryParse(args[j + 1], out var ttl))
@@ -255,7 +272,7 @@ async Task<bool> ProcessArgsAsync(string[] args)
         }
     }
 
-    return true;
+    return 0;
 }
 
 internal readonly struct OutputColor : IDisposable

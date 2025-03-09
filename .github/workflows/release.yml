@@ -10,7 +10,10 @@ on:
       branch:
         description: 'Branch to release from'
         required: true
-        default: 'master'
+        default: 'dev'
+
+permissions:
+  contents: write  # Добавление разрешений для записи содержимого
 
 jobs:
   build:
@@ -22,27 +25,22 @@ jobs:
       uses: actions/checkout@v2
       with:
         ref: ${{ github.event.inputs.branch || 'master' }}
+        fetch-depth: 1
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v1
       with:
         dotnet-version: '9.0.x'
 
-    - name: Restore dependencies
-      run: dotnet restore
-
-    - name: Build
-      run: dotnet build -c Release
-
     - name: Publish
-      run: dotnet publish Pinger -v d /p:PublishProfile=./Pinger/Properties/PublishProfiles/FolderProfile.pubxml
+      run: dotnet publish Pinger /p:PublishProfile=./Pinger/Properties/PublishProfiles/FolderProfile.pubxml
 
     - name: Get version
       id: get_version
-      run: |  
-        VERSION=$(./Pinger/bin/Release/net9.0/publish/win-x64/Pinger.exe -v | grep -oP '(?<=Version: ).*')
-        echo "VERSION=$VERSION" >> $GITHUB_ENV
-        echo "::set-output name=VERSION::$VERSION"
+      continue-on-error: false
+      run: |
+        $version = ./Pinger/bin/Release/publish/win-x64/Pinger.exe -vv
+        echo "VERSION=$version" >> $env:GITHUB_ENV
 
     - name: Create Release
       id: create_release
@@ -50,8 +48,8 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: v${{ steps.get_version.outputs.VERSION }}
-        release_name: Release ${{ steps.get_version.outputs.VERSION }}
+        tag_name: v${{ env.VERSION }}
+        release_name: Release ${{ env.VERSION }}
         draft: ${{ github.event.inputs.branch != 'master' }}
         prerelease: false
 
@@ -61,6 +59,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./Pinger/bin/Release/net9.0/publish/win-x64/Pinger.exe
+        asset_path: ./Pinger/bin/Release/publish/win-x64/Pinger.exe
         asset_name: Pinger.exe
         asset_content_type: application/octet-stream
