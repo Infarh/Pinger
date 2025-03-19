@@ -30,14 +30,24 @@ internal static class Update
 
     public static async Task CheckUpdateAsync(CancellationToken Cancel = default)
     {
+        Console.WriteLine("Check updates...");
+
         using var http = GetClient();
 
         if (await GetRepositoryInfoAsync(http, Cancel).ConfigureAwait(false) is not { Assets: [ { BrowserDownloadUrl: var download_uri }, .. ] } release_info)
             return;
 
+        var current_version = CurrentVersion;
         VersionInfo server_version = release_info.TagName;
+
+        Console.WriteLine($"Current version is {current_version}");
+        Console.WriteLine($" Server version is {server_version}");
+
         if (server_version <= CurrentVersion)
+        {
+            Console.WriteLine("No update required.");
             return;
+        }
 
         var v = Environment.Version;
 

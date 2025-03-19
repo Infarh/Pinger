@@ -112,7 +112,7 @@ try
             }
 
             var lost_p = (double)lost_count / i * 100;
-            
+
             var trend = last_time > avg_time ? '+' : last_time < avg_time ? '-' : '=';
 
             Console.Write($"[{i,6}]{host_str} {trend}t:{last_time,3}(avg:{avg_time,6:f1})ms ttl:{last_ttl} lost:{lost_count}({lost_p,5:f1}%)");
@@ -171,17 +171,23 @@ async Task<int?> ProcessArgsAsync(string[] args)
             case "help":
                 Console.WriteLine("Usage: pinger [options] [host]");
                 Console.WriteLine("Options:");
-                Console.WriteLine("  /? or /help - show this help");
-                Console.WriteLine("  /ttl or /ttl <ttl> - set ttl");
-                Console.WriteLine("  /p or /pause <pause> - set pause between pings");
-                Console.WriteLine("  /t or /timeout <timeout> - set timeout");
-                Console.WriteLine("  /l or /length <length> - set buffer length");
-                Console.WriteLine("  /c or /count <count> - set count of pings");
-                Console.WriteLine("  /avgt or /averaget <averaget> - set average time weight");
-                Console.WriteLine("  /e or /ignoreerror - ignore ping errors");
-                Console.WriteLine("  /h or /host <host> - set host");
-                Console.WriteLine("  /cls or /cln or /clean or /clear - clear console before start");
-                Console.WriteLine("  /v or /version - show program version");
+                Console.WriteLine("  -? or --help - show this help");
+                Console.WriteLine("  --ttl <ttl> - set ttl");
+                Console.WriteLine("  -p or --pause <pause> - set pause between pings");
+                Console.WriteLine("  -t or --timeout <timeout> - set timeout");
+                Console.WriteLine("  -l or --length <length> - set buffer length");
+                Console.WriteLine("  -c or --count <count> - set count of pings");
+                Console.WriteLine("  --avgt or --averaget <averaget> - set average time weight");
+                Console.WriteLine("  -e or --ignoreerror - ignore ping errors");
+                Console.WriteLine("  -h or --host <host> - set host");
+                Console.WriteLine("  --cls or --cln or --clean or --clear - clear console before start");
+                Console.WriteLine($"  -v or --version - show program version \"Version: {Update.CurrentVersion}\"");
+                Console.WriteLine($"  --vv - show clean program version \"{Update.CurrentVersion}\"");
+                Console.WriteLine("  -u or --update - check update program");
+                return null;
+
+            case "update":
+                await Update.CheckUpdateAsync(cancel);
                 return null;
 
             case "vv":
