@@ -113,7 +113,9 @@ try
 
             var lost_p = (double)lost_count / i * 100;
             
-            Console.Write($"[{i,6}]{host_str} t:{last_time,3}(avg:{avg_time,6:f1})ms ttl:{last_ttl} lost:{lost_count}({lost_p,5:f1}%)");
+            var trend = last_time > avg_time ? '+' : last_time < avg_time ? '-' : '=';
+
+            Console.Write($"[{i,6}]{host_str} {trend}t:{last_time,3}(avg:{avg_time,6:f1})ms ttl:{last_ttl} lost:{lost_count}({lost_p,5:f1}%)");
             var cursor_pos = Console.CursorLeft;
             if(last_cursor_pos > cursor_pos)
                 for(var d = last_cursor_pos - cursor_pos; d >= 0; d--)
@@ -121,7 +123,7 @@ try
 
             last_cursor_pos = cursor_pos;
 
-            Console.Title = $"{host}[{i,4}] t:{avg_time,5:0.0ms} lost:{lost_p,5:f1}%";
+            Console.Title = $"{host}[{i,4}] {trend}t:{avg_time,5:0.0ms} lost:{lost_p,5:f1}%";
 
         }
         catch (PingException ex)
