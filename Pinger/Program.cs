@@ -60,8 +60,6 @@ var last_cursor_pos = 0;
 var ip_str = "";
 var host_str = "";
 
-
-
 Console.CancelKeyPress += (_, e) =>
 {
     e.Cancel = true;
@@ -73,10 +71,14 @@ if (clean)
 
 try
 {
+    var time_interval = TimeSpan.Zero;
     while (!cancel.IsCancellationRequested && count-- != 0)
     {
         i++;
-        await Task.Delay(pause, cancel);
+        var current_pause = pause - time_interval.Milliseconds;
+        if(current_pause > 0)
+            await Task.Delay(current_pause, cancel);
+        var start_time = Environment.TickCount64;
 
         Console.CursorLeft = 0;
         try
@@ -129,6 +131,9 @@ try
             if (!ignore_error)
                 return 2;
         }
+
+        var end_time = Environment.TickCount64;
+        time_interval = TimeSpan.FromMilliseconds(end_time - start_time);
     }
 }
 catch(TaskCanceledException)
