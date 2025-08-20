@@ -45,7 +45,7 @@ public class ReleaseInfo
 
     /// <summary>Имя релиза</summary>
     [JsonPropertyName("name")]
-    public string Name { get; init; }
+    public string Name { get; init; } = null!;
 
     /// <summary>Черновик</summary>
     [JsonPropertyName("draft")]
