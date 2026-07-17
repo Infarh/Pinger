@@ -4,17 +4,8 @@ using System.Net.Sockets;
 namespace Pinger;
 
 /// <summary>Результат парсинга аргументов командной строки</summary>
-/// <param name="Host">Целевой хост</param>
-/// <param name="Pause">Пауза между пингами (мс)</param>
-/// <param name="Timeout">Таймаут ожидания ответа (мс)</param>
-/// <param name="Length">Длина буфера (байт)</param>
-/// <param name="Count">Количество пингов (-1 = бесконечно)</param>
-/// <param name="AverageWindow">Размер окна для скользящего среднего</param>
-/// <param name="IgnoreErrors">Игнорировать ошибки PingException</param>
-/// <param name="Clean">Очищать консоль перед стартом</param>
-/// <param name="Ttl">TTL для PingOptions</param>
 internal sealed record CommandLineOptions(
-    string Host,
+    IReadOnlyList<string> Hosts,
     int Pause,
     int Timeout,
     int Length,
@@ -25,12 +16,11 @@ internal sealed record CommandLineOptions(
     int Ttl)
 {
     /// <summary>Парсит аргументы командной строки</summary>
-    /// <returns>Кортеж: null — выход (help/version/update), ExitCode — код возврата при ошибке, Options — распаршенные опции</returns>
     public static async Task<(int? ExitCode, CommandLineOptions? Options)> ParseAsync(string[] Args, CancellationToken Cancel)
     {
         if (Args.Length == 0)
             return (null, new CommandLineOptions(
-                Host: "ya.ru",
+                Hosts: ["ya.ru"],
                 Pause: 250,
                 Timeout: 1000,
                 Length: 32,
@@ -40,7 +30,7 @@ internal sealed record CommandLineOptions(
                 Clean: false,
                 Ttl: 54));
 
-        string? host = null;
+        var hosts = new List<string>();
         var pause = 250;
         var timeout = 1000;
         var length = 32;
@@ -132,15 +122,6 @@ internal sealed record CommandLineOptions(
                     ignore_error = true;
                     break;
 
-                case "h":
-                case "host":
-                    if (j + 1 < Args.Length)
-                    {
-                        host = Args[j + 1];
-                        j++;
-                    }
-                    break;
-
                 case "cls":
                 case "cln":
                 case "clean":
@@ -149,37 +130,21 @@ internal sealed record CommandLineOptions(
                     break;
 
                 default:
-                    if (IPAddress.TryParse(parameter, out _))
-                        host = parameter;
-                    else
-                        try
-                        {
-                            if (await Dns.GetHostAddressesAsync(parameter) is { Length: > 0 })
-                                host = parameter;
-                            else
-                                Console.WriteLine($"unknown parameter {parameter} ({Args[j]})");
-                        }
-                        catch (SocketException)
-                        {
-                            // ignored
-                        }
-                    break;
+                    if (IsValidHost(parameter))
+                    {
+                        hosts.Add(parameter);
+                        break;
+                    }
+                    Console.Error.WriteLine($"unknown parameter: {Args[j]}");
+                    return (1, null);
             }
         }
 
-        if (host is null && Args.Length > 0)
-            host = Args[^1];
-
-        host ??= "ya.ru";
-
-        if (!IPAddress.TryParse(host, out _) && await Dns.GetHostAddressesAsync(host) is [])
-        {
-            Console.Error.WriteLine("Please provide a host address.");
-            return (1, null);
-        }
+        if (hosts.Count == 0)
+            hosts.Add("ya.ru");
 
         return (null, new CommandLineOptions(
-            Host: host,
+            Hosts: hosts.AsReadOnly(),
             Pause: pause,
             Timeout: timeout,
             Length: length,
@@ -190,22 +155,35 @@ internal sealed record CommandLineOptions(
             Ttl: ttl));
     }
 
+    private static bool IsValidHost(string Parameter)
+    {
+        if (IPAddress.TryParse(Parameter, out _))
+            return true;
+        try
+        {
+            return Dns.GetHostAddresses(Parameter) is { Length: > 0 };
+        }
+        catch (SocketException)
+        {
+            return false;
+        }
+    }
+
     private static void PrintHelp()
     {
-        Console.WriteLine("Usage: pinger [options] [host]");
+        Console.WriteLine("Usage: pinger [options] [host1 host2 ...]");
         Console.WriteLine("Options:");
-        Console.WriteLine("  -? or --help - show this help");
-        Console.WriteLine("  --ttl <ttl> - set ttl");
-        Console.WriteLine("  -p or --pause <pause> - set pause between pings");
-        Console.WriteLine("  -t or --timeout <timeout> - set timeout");
-        Console.WriteLine("  -l or --length <length> - set buffer length");
-        Console.WriteLine("  -c or --count <count> - set count of pings");
-        Console.WriteLine("  --avgt or --averaget <averaget> - set average time weight");
-        Console.WriteLine("  -e or --ignoreerror - ignore ping errors");
-        Console.WriteLine("  -h or --host <host> - set host");
-        Console.WriteLine("  --cls or --cln or --clean or --clear - clear console before start");
-        Console.WriteLine($"  -v or --version - show program version \"Version: {Update.CurrentVersion}\"");
-        Console.WriteLine($"  --vv - show clean program version \"{Update.CurrentVersion}\"");
-        Console.WriteLine("  -u or --update - check update program");
+        Console.WriteLine("  -? or --help          show this help");
+        Console.WriteLine("  --ttl <ttl>           set ttl");
+        Console.WriteLine("  -p or --pause <pause> set pause between pings");
+        Console.WriteLine("  -t or --timeout <timeout> set timeout");
+        Console.WriteLine("  -l or --length <length> set buffer length");
+        Console.WriteLine("  -c or --count <count> set count of pings");
+        Console.WriteLine("  --avgt or --averaget <averaget> set average time weight");
+        Console.WriteLine("  -e or --ignoreerror   ignore ping errors");
+        Console.WriteLine("  --cls or --clean      clear console before start");
+        Console.WriteLine($"  -v or --version       show program version \"Version: {Update.CurrentVersion}\"");
+        Console.WriteLine($"  --vv                  show clean program version \"{Update.CurrentVersion}\"");
+        Console.WriteLine("  -u or --update        check update program");
     }
 }

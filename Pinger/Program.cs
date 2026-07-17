@@ -11,26 +11,6 @@ if (exit_code is not null)
 
 var opts = options!;
 
-var buffer = new byte[opts.Length];
-var ping_options = new PingOptions { Ttl = opts.Ttl };
-var ping = new Ping();
-
-var i = 0;
-var n = 0;
-var last_ttl = 0;
-var last_time = 0L;
-var avg_time = 0d;
-var last_ip = IPAddress.None;
-var lost_count = 0;
-var last_cursor_pos = 0;
-
-// Для ASCII-графика
-var graph_width = 40;
-var graph_values = new CircularBuffer<int>(graph_width);
-
-var ip_str = "";
-var host_str = "";
-
 Console.CancelKeyPress += (_, e) =>
 {
     e.Cancel = true;
@@ -40,30 +20,84 @@ Console.CancelKeyPress += (_, e) =>
 if (opts.Clean)
     Console.Clear();
 
-var min_time = long.MaxValue;
-var max_time = long.MinValue;
+// Запускаем параллельный пинг для каждого хоста
+var tasks = opts.Hosts.Select((host, idx) => PingHostAsync(host, idx, opts, cancel));
+var results = await Task.WhenAll(tasks);
 
-try
+// Итоговая статистика
+Console.WriteLine();
+if (results.Length > 1)
 {
+    var total_tx = results.Sum(r => r.Total);
+    var total_rx = results.Sum(r => r.Received);
+    var total_lost = total_tx - total_rx;
+    var total_loss_pct = total_tx > 0 ? (double)total_lost / total_tx * 100 : 0d;
+    Console.WriteLine($"--- all hosts ping statistics ---");
+    Console.WriteLine($"{total_tx} packets transmitted, {total_rx} received, {total_loss_pct:f1}% packet loss");
+}
+
+return cancel.IsCancellationRequested ? -1 : results.All(r => r.ExitCode == 0) ? 0 : 2;
+
+/// <summary>Пингует хост в отдельном потоке, выводя результаты на закреплённой строке консоли</summary>
+async Task<PingResult> PingHostAsync(string Host, int RowIndex, CommandLineOptions Opts, CancellationToken Cancel)
+{
+    var buffer = new byte[Opts.Length];
+    var ping_options = new PingOptions { Ttl = Opts.Ttl };
+    var ping = new Ping();
+
+    var i = 0;
+    var n = 0;
+    var last_ttl = 0;
+    var last_time = 0L;
+    var avg_time = 0d;
+    var last_ip = IPAddress.None;
+    var lost_count = 0;
+    var min_time = long.MaxValue;
+    var max_time = long.MinValue;
+
+    var ip_str = "";
+    var host_str = Host;
+    var need_resolve = !IPAddress.TryParse(Host, out var _);
+
+    var graph_width = 20;
+    var graph_values = new CircularBuffer<int>(graph_width);
+    var console_lock = new object();
+
     var time_interval = TimeSpan.Zero;
-    var remaining = opts.Count;
-    while (!cancel.IsCancellationRequested && (remaining == -1 || remaining-- > 0))
+    var remaining = Opts.Count;
+
+    while (!Cancel.IsCancellationRequested && (remaining == -1 || remaining-- > 0))
     {
         i++;
-        var current_pause = opts.Pause - time_interval.Milliseconds;
-        if(current_pause > 0)
-            await Task.Delay(current_pause, cancel);
-        var start_time = Environment.TickCount64;
+        var current_pause = Opts.Pause - time_interval.Milliseconds;
+        if (current_pause > 0)
+        {
+            try { await Task.Delay(current_pause, Cancel); }
+            catch (OperationCanceledException) { break; }
+        }
 
-        if (!Console.IsOutputRedirected)
-            Console.CursorLeft = 0;
+        var start_time = Environment.TickCount64;
 
         try
         {
-            var target = last_ip != IPAddress.None
-                ? last_ip
-                : (await Dns.GetHostAddressesAsync(opts.Host, cancel))[0];
-            var reply = await ping.SendPingAsync(target, opts.Timeout, buffer, ping_options);
+            // Резолвим IP, если нужно
+            IPAddress target;
+            if (need_resolve || last_ip == IPAddress.None)
+            {
+                var addresses = await Dns.GetHostAddressesAsync(Host, Cancel);
+                if (addresses.Length == 0)
+                {
+                    lock (console_lock) WriteLineAt(RowIndex, $"[err ]{Host} — DNS resolve failed");
+                    break;
+                }
+                last_ip = addresses[0];
+                ip_str = last_ip.ToString();
+                host_str = Host == ip_str ? $"ip:{ip_str}" : $"host:{Host}({ip_str})";
+            }
+
+            target = last_ip;
+
+            var reply = await ping.SendPingAsync(target, Opts.Timeout, buffer, ping_options);
 
             switch (reply.Status)
             {
@@ -72,7 +106,7 @@ try
                     {
                         last_ip = reply.Address;
                         ip_str = last_ip.ToString();
-                        host_str = opts.Host == ip_str ? $"ip:{ip_str}" : $"host:{opts.Host}({ip_str})";
+                        host_str = Host == ip_str ? $"ip:{ip_str}" : $"host:{Host}({ip_str})";
                     }
 
                     last_ttl = reply.Options!.Ttl;
@@ -82,7 +116,7 @@ try
                     if (n == 1)
                         avg_time = last_time;
                     else
-                        avg_time += (last_time - avg_time) / (opts.AverageWindow <= 0 ? n : opts.AverageWindow);
+                        avg_time += (last_time - avg_time) / (Opts.AverageWindow <= 0 ? n : Opts.AverageWindow);
 
                     if (last_time < min_time) min_time = last_time;
                     if (last_time > max_time) max_time = last_time;
@@ -106,63 +140,77 @@ try
             }
 
             var lost_p = lost_count > 0 ? (double)lost_count / i * 100 : 0d;
-
             var trend = last_time > avg_time ? '+' : last_time < avg_time ? '-' : '=';
 
-            using (new OutputColor(last_time == 0 ? ConsoleColor.Red : last_time > avg_time * 1.5 ? ConsoleColor.Yellow : ConsoleColor.Green))
-                Console.Write($"[{i,6}]{host_str} {trend}t:{last_time,3}(avg:{avg_time,6:f1})ms ttl:{last_ttl} lost:{lost_count}({lost_p,5:f1}%)");
+            // Вывод на закреплённой строке
+            var line_color = last_time == 0 ? ConsoleColor.Red
+                : last_time > avg_time * 1.5 ? ConsoleColor.Yellow
+                : ConsoleColor.Green;
 
-            // ASCII-график
-            if (!Console.IsOutputRedirected && last_cursor_pos > 0)
+            lock (console_lock)
             {
-                var graph_line = BuildGraph(graph_values, graph_width);
-                Console.Write($" |{graph_line}");
+                using (new OutputColor(line_color))
+                    WriteLineAt(RowIndex,
+                        $"[{i,6}]{host_str} {trend}t:{last_time,3}(avg:{avg_time,6:f1})ms ttl:{last_ttl} lost:{lost_count}({lost_p,5:f1}%)"
+                        + $" |{BuildGraph(graph_values, graph_width)}");
             }
 
-            var cursor_pos = Console.CursorLeft;
-            if(last_cursor_pos > cursor_pos)
-                for(var d = last_cursor_pos - cursor_pos; d >= 0; d--)
-                    Console.Write(' ');
-
-            last_cursor_pos = cursor_pos;
-
-            try { Console.Title = $"{opts.Host}[{i,4}] {trend}t:{avg_time,5:0.0}ms lost:{lost_p,5:f1}%"; } catch { /* ignored */ }
-
+            var end_time = Environment.TickCount64;
+            time_interval = TimeSpan.FromMilliseconds(end_time - start_time);
         }
         catch (PingException ex)
         {
-            using (new OutputColor(ConsoleColor.Red))
-                Console.WriteLine($"Ping failed: {ex.Message}");
+            lock (console_lock)
+            {
+                using (new OutputColor(ConsoleColor.Red))
+                    WriteLineAt(RowIndex, $"[err ]{Host} — {ex.Message}");
+            }
 
-            if (!Console.IsOutputRedirected && last_cursor_pos > 0)
-                Console.CursorLeft = 0;
-
-            if (!opts.IgnoreErrors)
-                return 2;
+            if (!Opts.IgnoreErrors)
+                return new PingResult(Host, i, n, lost_count, min_time, avg_time, max_time, 2);
         }
+        catch (OperationCanceledException)
+        {
+            break;
+        }
+    }
 
-        var end_time = Environment.TickCount64;
-        time_interval = TimeSpan.FromMilliseconds(end_time - start_time);
+    // Итог по хосту
+    var loss_pct = i > 0 ? (double)lost_count / i * 100 : 0d;
+    lock (console_lock)
+    {
+        using (new OutputColor(ConsoleColor.White))
+            WriteLineAt(RowIndex,
+                $"[{i,6}]{Host} — complete: {n} recv, {loss_pct:f1}% loss"
+                + (n > 0 ? $", avg:{avg_time:f1}ms" : ""));
+    }
+
+    return new PingResult(Host, i, n, lost_count, min_time, avg_time, max_time, 0);
+}
+
+/// <summary>Выводит текст на указанной строке консоли, не сдвигая другие строки</summary>
+static void WriteLineAt(int Row, string Text)
+{
+    if (Console.IsOutputRedirected)
+    {
+        Console.WriteLine(Text);
+        return;
+    }
+
+    try
+    {
+        var (left, top) = (Console.CursorLeft, Console.CursorTop);
+        Console.SetCursorPosition(0, Row);
+        Console.Write(new string(' ', Console.BufferWidth - 1));
+        Console.SetCursorPosition(0, Row);
+        Console.Write(Text);
+        Console.SetCursorPosition(left, top);
+    }
+    catch
+    {
+        Console.WriteLine(Text);
     }
 }
-catch(OperationCanceledException)
-{
-    // ignored
-}
-
-// Статистика при завершении
-var total = i;
-var received = n;
-var lost = lost_count;
-var loss_pct = total > 0 ? (double)lost / total * 100 : 0d;
-
-Console.WriteLine();
-Console.WriteLine($"--- {opts.Host} ping statistics ---");
-Console.WriteLine($"{total} packets transmitted, {received} received, {loss_pct:f1}% packet loss");
-if (received > 0)
-    Console.WriteLine($"rtt min/avg/max = {min_time}/{avg_time:f1}/{max_time} ms");
-
-return cancel.IsCancellationRequested ? -1 : 0;
 
 /// <summary>Строит ASCII-график из последних значений</summary>
 static string BuildGraph(CircularBuffer<int> Values, int Width)
@@ -197,8 +245,11 @@ static string BuildGraph(CircularBuffer<int> Values, int Width)
     return new string(chars);
 }
 
+/// <summary>Результат пинга одного хоста</summary>
+internal sealed record PingResult(string Host, int Total, int Received, int Lost, long MinTime, double AvgTime, long MaxTime, int ExitCode);
+
 /// <summary>Кольцевой буфер для хранения последних N значений</summary>
-internal sealed class CircularBuffer<T> : IEnumerable<T>
+internal sealed class CircularBuffer<T>
 {
     private readonly T[] _Buffer;
     private int _Head;
@@ -226,14 +277,6 @@ internal sealed class CircularBuffer<T> : IEnumerable<T>
             _Count++;
     }
 
-    public IEnumerator<T> GetEnumerator()
-    {
-        for (var j = 0; j < _Count; j++)
-            yield return this[j];
-    }
-
-    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
-
     /// <summary>Максимальное значение среди положительных</summary>
     public int MaxValue()
     {
@@ -241,7 +284,7 @@ internal sealed class CircularBuffer<T> : IEnumerable<T>
         for (var j = 0; j < _Count; j++)
         {
             var v = (int)(object)this[j]!;
-            if(v > max) max = v;
+            if (v > max) max = v;
         }
         return max;
     }
