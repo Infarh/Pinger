@@ -20,26 +20,42 @@ Console.CancelKeyPress += (_, e) =>
 if (opts.Clean)
     Console.Clear();
 
+// Резервируем строки под каждый хост
+var base_row = 0;
+if (!Console.IsOutputRedirected)
+{
+    base_row = Console.CursorTop;
+    for (var j = 0; j < opts.Hosts.Count; j++)
+        Console.WriteLine();
+}
+
 // Запускаем параллельный пинг для каждого хоста
-var tasks = opts.Hosts.Select((host, idx) => PingHostAsync(host, idx, opts, cancel));
+var console_lock = new object();
+var tasks = opts.Hosts.Select((host, idx) => PingHostAsync(host, base_row + idx, console_lock, opts, cancel));
 var results = await Task.WhenAll(tasks);
 
 // Итоговая статистика
-Console.WriteLine();
+if (!Console.IsOutputRedirected)
+{
+    Console.CursorTop = base_row + opts.Hosts.Count;
+    Console.CursorLeft = 0;
+}
+
 if (results.Length > 1)
 {
     var total_tx = results.Sum(r => r.Total);
     var total_rx = results.Sum(r => r.Received);
     var total_lost = total_tx - total_rx;
     var total_loss_pct = total_tx > 0 ? (double)total_lost / total_tx * 100 : 0d;
+    Console.WriteLine();
     Console.WriteLine($"--- all hosts ping statistics ---");
     Console.WriteLine($"{total_tx} packets transmitted, {total_rx} received, {total_loss_pct:f1}% packet loss");
 }
 
 return cancel.IsCancellationRequested ? -1 : results.All(r => r.ExitCode == 0) ? 0 : 2;
 
-/// <summary>Пингует хост в отдельном потоке, выводя результаты на закреплённой строке консоли</summary>
-async Task<PingResult> PingHostAsync(string Host, int RowIndex, CommandLineOptions Opts, CancellationToken Cancel)
+/// <summary>Пингует хост, обновляя закреплённую строку консоли</summary>
+async Task<PingResult> PingHostAsync(string Host, int RowIndex, object ConsoleLock, CommandLineOptions Opts, CancellationToken Cancel)
 {
     var buffer = new byte[Opts.Length];
     var ping_options = new PingOptions { Ttl = Opts.Ttl };
@@ -59,10 +75,6 @@ async Task<PingResult> PingHostAsync(string Host, int RowIndex, CommandLineOptio
     var host_str = Host;
     var need_resolve = !IPAddress.TryParse(Host, out var _);
 
-    var graph_width = 20;
-    var graph_values = new CircularBuffer<int>(graph_width);
-    var console_lock = new object();
-
     var time_interval = TimeSpan.Zero;
     var remaining = Opts.Count;
 
@@ -80,14 +92,13 @@ async Task<PingResult> PingHostAsync(string Host, int RowIndex, CommandLineOptio
 
         try
         {
-            // Резолвим IP, если нужно
             IPAddress target;
             if (need_resolve || last_ip == IPAddress.None)
             {
                 var addresses = await Dns.GetHostAddressesAsync(Host, Cancel);
                 if (addresses.Length == 0)
                 {
-                    lock (console_lock) WriteLineAt(RowIndex, $"[err ]{Host} — DNS resolve failed");
+                    WriteAt(RowIndex, ConsoleLock, ConsoleColor.Red, $"[err ]{Host} — DNS resolve failed");
                     break;
                 }
                 last_ip = addresses[0];
@@ -120,51 +131,37 @@ async Task<PingResult> PingHostAsync(string Host, int RowIndex, CommandLineOptio
 
                     if (last_time < min_time) min_time = last_time;
                     if (last_time > max_time) max_time = last_time;
-
-                    graph_values.Add((int)last_time);
                     break;
 
                 case IPStatus.TimedOut:
                     lost_count++;
                     last_time = 0;
                     last_ttl = 0;
-                    graph_values.Add(-1);
                     break;
 
                 default:
                     lost_count++;
                     last_time = 0;
                     last_ttl = 0;
-                    graph_values.Add(-1);
                     break;
             }
 
             var lost_p = lost_count > 0 ? (double)lost_count / i * 100 : 0d;
             var trend = last_time > avg_time ? '+' : last_time < avg_time ? '-' : '=';
 
-            // Вывод на закреплённой строке
             var line_color = last_time == 0 ? ConsoleColor.Red
                 : last_time > avg_time * 1.5 ? ConsoleColor.Yellow
                 : ConsoleColor.Green;
 
-            lock (console_lock)
-            {
-                using (new OutputColor(line_color))
-                    WriteLineAt(RowIndex,
-                        $"[{i,6}]{host_str} {trend}t:{last_time,3}(avg:{avg_time,6:f1})ms ttl:{last_ttl} lost:{lost_count}({lost_p,5:f1}%)"
-                        + $" |{BuildGraph(graph_values, graph_width)}");
-            }
+            WriteAt(RowIndex, ConsoleLock, line_color,
+                $"[{i,6}]{host_str} {trend}t:{last_time,3}(avg:{avg_time,6:f1})ms ttl:{last_ttl} lost:{lost_count}({lost_p,5:f1}%)");
 
             var end_time = Environment.TickCount64;
             time_interval = TimeSpan.FromMilliseconds(end_time - start_time);
         }
         catch (PingException ex)
         {
-            lock (console_lock)
-            {
-                using (new OutputColor(ConsoleColor.Red))
-                    WriteLineAt(RowIndex, $"[err ]{Host} — {ex.Message}");
-            }
+            WriteAt(RowIndex, ConsoleLock, ConsoleColor.Red, $"[err ]{Host} — {ex.Message}");
 
             if (!Opts.IgnoreErrors)
                 return new PingResult(Host, i, n, lost_count, min_time, avg_time, max_time, 2);
@@ -177,118 +174,42 @@ async Task<PingResult> PingHostAsync(string Host, int RowIndex, CommandLineOptio
 
     // Итог по хосту
     var loss_pct = i > 0 ? (double)lost_count / i * 100 : 0d;
-    lock (console_lock)
-    {
-        using (new OutputColor(ConsoleColor.White))
-            WriteLineAt(RowIndex,
-                $"[{i,6}]{Host} — complete: {n} recv, {loss_pct:f1}% loss"
-                + (n > 0 ? $", avg:{avg_time:f1}ms" : ""));
-    }
+    WriteAt(RowIndex, ConsoleLock, ConsoleColor.White,
+        $"[{i,6}]{Host} — complete: {n} recv, {loss_pct:f1}% loss"
+        + (n > 0 ? $", avg:{avg_time:f1}ms" : ""));
 
     return new PingResult(Host, i, n, lost_count, min_time, avg_time, max_time, 0);
 }
 
-/// <summary>Выводит текст на указанной строке консоли, не сдвигая другие строки</summary>
-static void WriteLineAt(int Row, string Text)
+/// <summary>Обновляет строку консоли по указанному индексу, затирая предыдущее содержимое</summary>
+static void WriteAt(int Row, object Lock, ConsoleColor Color, string Text)
 {
     if (Console.IsOutputRedirected)
     {
-        Console.WriteLine(Text);
+        using (new OutputColor(Color))
+            Console.WriteLine(Text);
         return;
     }
 
-    try
+    lock (Lock)
     {
-        var (left, top) = (Console.CursorLeft, Console.CursorTop);
-        Console.SetCursorPosition(0, Row);
-        Console.Write(new string(' ', Console.BufferWidth - 1));
-        Console.SetCursorPosition(0, Row);
-        Console.Write(Text);
-        Console.SetCursorPosition(left, top);
-    }
-    catch
-    {
-        Console.WriteLine(Text);
-    }
-}
-
-/// <summary>Строит ASCII-график из последних значений</summary>
-static string BuildGraph(CircularBuffer<int> Values, int Width)
-{
-    if (Values.Count == 0) return new string(' ', Width);
-
-    var max = Values.MaxValue();
-    if (max == 0) return new string(' ', Width);
-
-    var chars = new char[Width];
-    for (var j = 0; j < Width; j++)
-    {
-        var idx = Values.Count - Width + j;
-        if (idx < 0) { chars[j] = ' '; continue; }
-
-        var v = Values[idx];
-        if (v < 0)
-            chars[j] = 'x';
-        else
+        try
         {
-            var h = (int)((double)v / max * 4);
-            chars[j] = h switch
-            {
-                0 => '\u2581',
-                1 => '\u2582',
-                2 => '\u2584',
-                3 => '\u2586',
-                _ => '\u2588',
-            };
+            Console.CursorTop = Row;
+            Console.CursorLeft = 0;
+            var w = Console.BufferWidth - 1;
+            Console.Write(Text.Length < w ? Text.PadRight(w) : Text[..w]);
+        }
+        catch
+        {
+            using (new OutputColor(Color))
+                Console.WriteLine(Text);
         }
     }
-    return new string(chars);
 }
 
 /// <summary>Результат пинга одного хоста</summary>
 internal sealed record PingResult(string Host, int Total, int Received, int Lost, long MinTime, double AvgTime, long MaxTime, int ExitCode);
-
-/// <summary>Кольцевой буфер для хранения последних N значений</summary>
-internal sealed class CircularBuffer<T>
-{
-    private readonly T[] _Buffer;
-    private int _Head;
-    private int _Count;
-
-    public CircularBuffer(int Capacity) => _Buffer = new T[Capacity];
-
-    public int Count => _Count;
-
-    public T this[int Index]
-    {
-        get
-        {
-            if (Index < 0 || Index >= _Count)
-                throw new ArgumentOutOfRangeException(nameof(Index));
-            return _Buffer[(_Head - _Count + Index + _Buffer.Length) % _Buffer.Length];
-        }
-    }
-
-    public void Add(T Value)
-    {
-        _Buffer[_Head] = Value;
-        _Head = (_Head + 1) % _Buffer.Length;
-        if (_Count < _Buffer.Length)
-            _Count++;
-    }
-
-    /// <summary>Максимальное значение среди положительных</summary>
-    public int MaxValue()
-    {
-        var max = 0;
-        for (var j = 0; j < _Count; j++)
-        {
-            var v = (int)(object)this[j]!;
-            if (v > max) max = v;
-        }
-        return max;
-    }
-}
 
 /// <summary>Устанавливает цвет консоли и восстанавливает при Dispose</summary>
 internal readonly struct OutputColor : IDisposable
