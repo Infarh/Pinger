@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/.Service/" />
+  <Folder Name="/.Service/actions/">
+    <File Path=".github/copilot-instructions.md" />
+    <File Path=".github/workflows/release.yml" />
+  </Folder>
+  <Project Path="Pinger/Pinger.csproj" />
+</Solution>
