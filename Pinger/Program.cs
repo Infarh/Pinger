@@ -103,7 +103,7 @@ async Task<PingResult> PingHostAsync(string Host, int RowIndex, object ConsoleLo
                 }
                 last_ip = addresses[0];
                 ip_str = last_ip.ToString();
-                host_str = Host == ip_str ? $"ip:{ip_str}" : $"host:{Host}({ip_str})";
+                host_str = Host == ip_str ? ip_str : $"{Host}({ip_str})";
             }
 
             target = last_ip;
@@ -117,7 +117,7 @@ async Task<PingResult> PingHostAsync(string Host, int RowIndex, object ConsoleLo
                     {
                         last_ip = reply.Address;
                         ip_str = last_ip.ToString();
-                        host_str = Host == ip_str ? $"ip:{ip_str}" : $"host:{Host}({ip_str})";
+                        host_str = Host == ip_str ? ip_str : $"{Host}({ip_str})";
                     }
 
                     last_ttl = reply.Options!.Ttl;
