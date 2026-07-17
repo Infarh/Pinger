@@ -1,4 +1,6 @@
-﻿using System.Net.Http.Json;
+﻿using System.ComponentModel;
+using System.Diagnostics;
+using System.Net.Http.Json;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -19,10 +21,9 @@ internal static class Update
         var client = new HttpClient
         {
             BaseAddress = new(__BaseUri),
-            MaxResponseContentBufferSize = 1024 * 5,
-            Timeout = TimeSpan.FromSeconds(3)
+            MaxResponseContentBufferSize = 1024 * 50,
+            Timeout = TimeSpan.FromSeconds(5)
         };
-        client.Timeout = TimeSpan.FromSeconds(5);
         client.DefaultRequestHeaders.UserAgent.ParseAdd("Pinger");
 
         return client;
@@ -34,7 +35,7 @@ internal static class Update
 
         using var http = GetClient();
 
-        if (await GetRepositoryInfoAsync(http, Cancel).ConfigureAwait(false) is not { Assets: [ { BrowserDownloadUrl: var download_uri }, .. ] } release_info)
+        if (await GetRepositoryInfoAsync(http, Cancel).ConfigureAwait(false) is not { Draft: false, Assets: [ { BrowserDownloadUrl: var download_uri }, .. ] } release_info)
             return;
 
         var current_version = CurrentVersion;
@@ -49,22 +50,46 @@ internal static class Update
             return;
         }
 
-        var v = Environment.Version;
-
         var program_file = new FileInfo(Environment.ProcessPath!);
         var program_dir = program_file.Directory!.FullName;
         var program_file_name = program_file.Name;
         var program_file_name_without_ext = Path.GetFileNameWithoutExtension(program_file_name);
+        var program_ext = program_file.Extension;
 
-        var program_file_name_new = $"{program_file_name_without_ext}[{server_version}]{program_file.Extension}";
-        var path_to_download = Path.Combine(program_dir, program_file_name_new);
-
-        var downloaded_file = await download_uri.DownloadFileAsync(http, path_to_download, Cancel);
-        var backup_file = new FileInfo(Path.Combine(program_dir, $"{program_file_name_without_ext}[{CurrentVersion}]{program_file.Extension}.bak"));
-
-        await using(var program_file_stream = program_file.OpenRead())
-        await using(var backup_file_stream = backup_file.OpenWrite())
+        // Сначала бекапим текущий файл
+        var backup_file_path = Path.Combine(program_dir, $"{program_file_name_without_ext}[{CurrentVersion}]{program_ext}.bak");
+        await using (var program_file_stream = program_file.OpenRead())
+        await using (var backup_file_stream = new FileStream(backup_file_path, FileMode.Create, FileAccess.Write, FileShare.None))
             await program_file_stream.CopyToAsync(backup_file_stream, Cancel);
+
+        Console.WriteLine($"Backup created: {backup_file_path}");
+
+        // Скачиваем новую версию
+        var downloaded_file_name = $"{program_file_name_without_ext}[{server_version}]{program_ext}";
+        var path_to_download = Path.Combine(program_dir, downloaded_file_name);
+
+        await download_uri.DownloadFileAsync(http, path_to_download, Cancel);
+
+        Console.WriteLine($"Downloaded: {path_to_download}");
+
+        // Заменяем текущий файл скачанным
+        program_file.Delete();
+        File.Move(path_to_download, program_file.FullName);
+
+        Console.WriteLine("Update applied. Restarting...");
+
+        // Запускаем обновлённую версию
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = program_file.FullName,
+            Arguments = Environment.GetCommandLineArgs().Length > 1
+                ? string.Join(" ", Environment.GetCommandLineArgs()[1..].Select(a => a.Contains(' ') ? $"\"{a}\"" : a))
+                : "",
+            UseShellExecute = true
+        });
+
+        // Завершаем текущий процесс
+        Environment.Exit(0);
     }
 
     private static async Task<FileInfo> DownloadFileAsync(

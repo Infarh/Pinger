@@ -1,51 +1,18 @@
 ﻿using System.Net;
 using System.Net.NetworkInformation;
-using System.Net.Sockets;
 
 var cancellation = new CancellationTokenSource();
 var cancel = cancellation.Token;
 
-//var update_task = Update.CheckUpdateAsync(cancel);
+var (exit_code, options) = await CommandLineOptions.ParseAsync(args, cancel);
 
-//if (args.Length == 0)
-//{
-//    Console.Error.WriteLine("Please provide a host address.");
-//    return 1;
-//}
+if (exit_code is not null)
+    return exit_code.Value;
 
-var pause = 250;
-var timeout = 1000;
-var length = 32;
-var count = -1L;
-var avg_w_t = 100;
-var ignore_error = false;
-var clean = false;
+var opts = options!;
 
-var buffer = new byte[length];
-var options = new PingOptions { Ttl = 54 };
-
-string? host = "ya.ru";
-
-switch (await ProcessArgsAsync(args))
-{
-    case null:
-        return 0;
-
-    case { } return_code when return_code != 0:
-        return return_code;
-}
-
-if (host is null)
-{
-    host = args[^1];
-
-    if (!IPAddress.TryParse(host, out _) && await Dns.GetHostAddressesAsync(host) is [])
-    {
-        Console.Error.WriteLine("Please provide a host address.");
-        return 1;
-    }
-}
-
+var buffer = new byte[opts.Length];
+var ping_options = new PingOptions { Ttl = opts.Ttl };
 var ping = new Ping();
 
 var i = 0;
@@ -57,6 +24,10 @@ var last_ip = IPAddress.None;
 var lost_count = 0;
 var last_cursor_pos = 0;
 
+// Для ASCII-графика
+var graph_width = 40;
+var graph_values = new CircularBuffer<int>(graph_width);
+
 var ip_str = "";
 var host_str = "";
 
@@ -66,24 +37,33 @@ Console.CancelKeyPress += (_, e) =>
     cancellation.Cancel();
 };
 
-if (clean)
+if (opts.Clean)
     Console.Clear();
+
+var min_time = long.MaxValue;
+var max_time = long.MinValue;
 
 try
 {
     var time_interval = TimeSpan.Zero;
-    while (!cancel.IsCancellationRequested && count-- != 0)
+    var remaining = opts.Count;
+    while (!cancel.IsCancellationRequested && (remaining == -1 || remaining-- > 0))
     {
         i++;
-        var current_pause = pause - time_interval.Milliseconds;
+        var current_pause = opts.Pause - time_interval.Milliseconds;
         if(current_pause > 0)
             await Task.Delay(current_pause, cancel);
         var start_time = Environment.TickCount64;
 
-        Console.CursorLeft = 0;
+        if (!Console.IsOutputRedirected)
+            Console.CursorLeft = 0;
+
         try
         {
-            var reply = ping.Send(host, timeout, buffer, options);
+            var target = last_ip != IPAddress.None
+                ? last_ip
+                : (await Dns.GetHostAddressesAsync(opts.Host, cancel))[0];
+            var reply = await ping.SendPingAsync(target, opts.Timeout, buffer, ping_options);
 
             switch (reply.Status)
             {
@@ -92,7 +72,7 @@ try
                     {
                         last_ip = reply.Address;
                         ip_str = last_ip.ToString();
-                        host_str = host == ip_str ? $"ip:{ip_str}" : $"host:{host}({ip_str})";
+                        host_str = opts.Host == ip_str ? $"ip:{ip_str}" : $"host:{opts.Host}({ip_str})";
                     }
 
                     last_ttl = reply.Options!.Ttl;
@@ -102,20 +82,43 @@ try
                     if (n == 1)
                         avg_time = last_time;
                     else
-                        avg_time += (last_time - avg_time) / (avg_w_t <= 0 ? n : avg_w_t);
+                        avg_time += (last_time - avg_time) / (opts.AverageWindow <= 0 ? n : opts.AverageWindow);
+
+                    if (last_time < min_time) min_time = last_time;
+                    if (last_time > max_time) max_time = last_time;
+
+                    graph_values.Add((int)last_time);
                     break;
 
                 case IPStatus.TimedOut:
                     lost_count++;
+                    last_time = 0;
+                    last_ttl = 0;
+                    graph_values.Add(-1);
                     break;
-                //default: break;
+
+                default:
+                    lost_count++;
+                    last_time = 0;
+                    last_ttl = 0;
+                    graph_values.Add(-1);
+                    break;
             }
 
-            var lost_p = (double)lost_count / i * 100;
+            var lost_p = lost_count > 0 ? (double)lost_count / i * 100 : 0d;
 
             var trend = last_time > avg_time ? '+' : last_time < avg_time ? '-' : '=';
 
-            Console.Write($"[{i,6}]{host_str} {trend}t:{last_time,3}(avg:{avg_time,6:f1})ms ttl:{last_ttl} lost:{lost_count}({lost_p,5:f1}%)");
+            using (new OutputColor(last_time == 0 ? ConsoleColor.Red : last_time > avg_time * 1.5 ? ConsoleColor.Yellow : ConsoleColor.Green))
+                Console.Write($"[{i,6}]{host_str} {trend}t:{last_time,3}(avg:{avg_time,6:f1})ms ttl:{last_ttl} lost:{lost_count}({lost_p,5:f1}%)");
+
+            // ASCII-график
+            if (!Console.IsOutputRedirected && last_cursor_pos > 0)
+            {
+                var graph_line = BuildGraph(graph_values, graph_width);
+                Console.Write($" |{graph_line}");
+            }
+
             var cursor_pos = Console.CursorLeft;
             if(last_cursor_pos > cursor_pos)
                 for(var d = last_cursor_pos - cursor_pos; d >= 0; d--)
@@ -123,14 +126,18 @@ try
 
             last_cursor_pos = cursor_pos;
 
-            Console.Title = $"{host}[{i,4}] {trend}t:{avg_time,5:0.0ms} lost:{lost_p,5:f1}%";
+            try { Console.Title = $"{opts.Host}[{i,4}] {trend}t:{avg_time,5:0.0}ms lost:{lost_p,5:f1}%"; } catch { /* ignored */ }
 
         }
         catch (PingException ex)
         {
-            Console.Write($"Ping failed: {ex.Message}");
+            using (new OutputColor(ConsoleColor.Red))
+                Console.WriteLine($"Ping failed: {ex.Message}");
 
-            if (!ignore_error)
+            if (!Console.IsOutputRedirected && last_cursor_pos > 0)
+                Console.CursorLeft = 0;
+
+            if (!opts.IgnoreErrors)
                 return 2;
         }
 
@@ -138,186 +145,124 @@ try
         time_interval = TimeSpan.FromMilliseconds(end_time - start_time);
     }
 }
-catch(TaskCanceledException)
+catch(OperationCanceledException)
 {
     // ignored
 }
 
-Console.WriteLine();
-Console.WriteLine($"Ping {host} complete.");
+// Статистика при завершении
+var total = i;
+var received = n;
+var lost = lost_count;
+var loss_pct = total > 0 ? (double)lost / total * 100 : 0d;
 
-//try
-//{
-//    await update_task;
-//}
-//catch (OperationCanceledException)
-//{
-//    // ignored
-//}
+Console.WriteLine();
+Console.WriteLine($"--- {opts.Host} ping statistics ---");
+Console.WriteLine($"{total} packets transmitted, {received} received, {loss_pct:f1}% packet loss");
+if (received > 0)
+    Console.WriteLine($"rtt min/avg/max = {min_time}/{avg_time:f1}/{max_time} ms");
 
 return cancel.IsCancellationRequested ? -1 : 0;
 
-async Task<int?> ProcessArgsAsync(string[] args)
+/// <summary>Строит ASCII-график из последних значений</summary>
+static string BuildGraph(CircularBuffer<int> Values, int Width)
 {
-    if (args.Length == 0) return 0;
+    if (Values.Count == 0) return new string(' ', Width);
 
-    for (var j = 0; j < args.Length; j++)
+    var max = Values.MaxValue();
+    if (max == 0) return new string(' ', Width);
+
+    var chars = new char[Width];
+    for (var j = 0; j < Width; j++)
     {
-        var parameter = args[j].TrimStart('/', '-').Trim(' ').ToLower();
+        var idx = Values.Count - Width + j;
+        if (idx < 0) { chars[j] = ' '; continue; }
 
-        switch (parameter)
+        var v = Values[idx];
+        if (v < 0)
+            chars[j] = 'x';
+        else
         {
-            case "?":
-            case "help":
-                Console.WriteLine("Usage: pinger [options] [host]");
-                Console.WriteLine("Options:");
-                Console.WriteLine("  -? or --help - show this help");
-                Console.WriteLine("  --ttl <ttl> - set ttl");
-                Console.WriteLine("  -p or --pause <pause> - set pause between pings");
-                Console.WriteLine("  -t or --timeout <timeout> - set timeout");
-                Console.WriteLine("  -l or --length <length> - set buffer length");
-                Console.WriteLine("  -c or --count <count> - set count of pings");
-                Console.WriteLine("  --avgt or --averaget <averaget> - set average time weight");
-                Console.WriteLine("  -e or --ignoreerror - ignore ping errors");
-                Console.WriteLine("  -h or --host <host> - set host");
-                Console.WriteLine("  --cls or --cln or --clean or --clear - clear console before start");
-                Console.WriteLine($"  -v or --version - show program version \"Version: {Update.CurrentVersion}\"");
-                Console.WriteLine($"  --vv - show clean program version \"{Update.CurrentVersion}\"");
-                Console.WriteLine("  -u or --update - check update program");
-                return null;
+            var h = (int)((double)v / max * 4);
+            chars[j] = h switch
+            {
+                0 => '\u2581',
+                1 => '\u2582',
+                2 => '\u2584',
+                3 => '\u2586',
+                _ => '\u2588',
+            };
+        }
+    }
+    return new string(chars);
+}
 
-            case "update":
-                await Update.CheckUpdateAsync(cancel);
-                return null;
+/// <summary>Кольцевой буфер для хранения последних N значений</summary>
+internal sealed class CircularBuffer<T> : IEnumerable<T>
+{
+    private readonly T[] _Buffer;
+    private int _Head;
+    private int _Count;
 
-            case "vv":
-                Console.WriteLine(Update.CurrentVersion);
-                return null;
+    public CircularBuffer(int Capacity) => _Buffer = new T[Capacity];
 
-            case "v":
-            case "version":
-                // Вывод версии программы, определенной при сборке
-                Console.WriteLine($"Version: {Update.CurrentVersion}");
-                return null;
+    public int Count => _Count;
 
-            case "ttl":
-                if (j + 1 < args.Length && int.TryParse(args[j + 1], out var ttl))
-                {
-                    options.Ttl = ttl;
-                    j++;
-                }
-                break;
-
-            case "p":
-            case "pause":
-                if (j + 1 < args.Length && int.TryParse(args[j + 1], out var p))
-                {
-                    pause = p;
-                    j++;
-                }
-                break;
-
-            case "t":
-            case "timeout":
-                if (j + 1 < args.Length && int.TryParse(args[j + 1], out var t))
-                {
-                    timeout = t;
-                    j++;
-                }
-                break;
-
-            case "l":
-            case "length":
-                if (j + 1 < args.Length && int.TryParse(args[j + 1], out var l))
-                {
-                    length = l;
-                    j++;
-                }
-                break;
-
-            case "c":
-            case "count":
-                if (j + 1 < args.Length && long.TryParse(args[j + 1], out var c))
-                {
-                    count = c;
-                    j++;
-                }
-                break;
-
-            case "avgt":
-            case "averaget":
-                if (j + 1 < args.Length && int.TryParse(args[j + 1], out var at))
-                {
-                    avg_w_t = at;
-                    j++;
-                }
-                break;
-
-            case "e":
-            case "ignoreerror":
-                ignore_error = true;
-                break;
-
-            case "h":
-            case "host":
-                if (j + 1 < args.Length)
-                {
-                    host = args[j + 1];
-                    j++;
-                }
-                break;
-
-            case "cls":
-            case "cln":
-            case "clean":
-            case "clear":
-                clean = true;
-                break;
-
-            default:
-
-                if (IPAddress.TryParse(parameter, out _))
-                    host = parameter;
-                else
-                    try
-                    {
-                        if (await Dns.GetHostAddressesAsync(parameter) is { Length: > 0 })
-                            host = parameter;
-                        else
-                        {
-                            Console.WriteLine($"unknown parameter {parameter} ({args[j]})");
-                        }
-                    }
-                    catch (SocketException)
-                    {
-                        // ignored
-                    }
-
-                break;
+    public T this[int Index]
+    {
+        get
+        {
+            if (Index < 0 || Index >= _Count)
+                throw new ArgumentOutOfRangeException(nameof(Index));
+            return _Buffer[(_Head - _Count + Index + _Buffer.Length) % _Buffer.Length];
         }
     }
 
-    return 0;
+    public void Add(T Value)
+    {
+        _Buffer[_Head] = Value;
+        _Head = (_Head + 1) % _Buffer.Length;
+        if (_Count < _Buffer.Length)
+            _Count++;
+    }
+
+    public IEnumerator<T> GetEnumerator()
+    {
+        for (var j = 0; j < _Count; j++)
+            yield return this[j];
+    }
+
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+    /// <summary>Максимальное значение среди положительных</summary>
+    public int MaxValue()
+    {
+        var max = 0;
+        for (var j = 0; j < _Count; j++)
+        {
+            var v = (int)(object)this[j]!;
+            if(v > max) max = v;
+        }
+        return max;
+    }
 }
 
+/// <summary>Устанавливает цвет консоли и восстанавливает при Dispose</summary>
 internal readonly struct OutputColor : IDisposable
 {
-    private readonly ConsoleColor _BackgroundColor = Console.BackgroundColor;
-    private readonly ConsoleColor _ForegroundColor = Console.ForegroundColor;
+    private readonly ConsoleColor _Background = Console.BackgroundColor;
+    private readonly ConsoleColor _Foreground = Console.ForegroundColor;
 
     public OutputColor(ConsoleColor Foreground, ConsoleColor? Background = null)
     {
-        //_BackgroundColor = Console.BackgroundColor;
-        //_ForegroundColor = Console.ForegroundColor;
-
         Console.ForegroundColor = Foreground;
-        if (Background is { } background)
-            Console.BackgroundColor = background;
+        if (Background is { } bg)
+            Console.BackgroundColor = bg;
     }
 
     public void Dispose()
     {
-        Console.ForegroundColor = _ForegroundColor;
-        Console.BackgroundColor = _BackgroundColor;
+        Console.ForegroundColor = _Foreground;
+        Console.BackgroundColor = _Background;
     }
 }
